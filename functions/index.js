@@ -13,13 +13,13 @@ const corsOptions = {
 // FCM 메시지 보내는 함수
 const sendPushNotification = async (title, body, tokens) => {
   const message = {
-    notification: {
+    data: {
       title,
       body,
+      click_action: "https://runnings.netlify.app/"
     },
-    tokens,
+    tokens
   };
-
   try {
     const response = await admin.messaging().sendEachForMulticast(message);
     console.log("Messages sent successfully!", response);
@@ -45,15 +45,17 @@ const getFormattedDate = (date) => new Date(date).toLocaleDateString();
 // 스케줄된 푸시 알림 함수
 exports.scheduledPushNotifications = onSchedule(
   {
-    schedule: "0 8 * * *", // 매일 오전 8시 (UTC 기준)
-    timeZone: "Asia/Seoul", // 한국 표준시 기준
+    schedule: '0 8 * * *', // 매일 오전 9시 (KST 기준)
+    timeZone: 'Asia/Seoul',
   },
-  async (event) => {
+  async () => {
     const db = admin.firestore();
-    const marathonsRef = db.collection("marathons");
+    const marathonsRef = db.collection('marathons');
+
     const today = new Date();
     const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1); // 내일 날짜
+    tomorrow.setDate(today.getDate() + 1);
+
     const todayStr = getFormattedDate(today);
     const tomorrowStr = getFormattedDate(tomorrow);
 
@@ -61,29 +63,64 @@ exports.scheduledPushNotifications = onSchedule(
       const marathonsSnapshot = await marathonsRef.get();
 
       for (const doc of marathonsSnapshot.docs) {
+        const marathonId = doc.id;
         const marathonData = doc.data();
 
-        const registrationStartDateStr = getFormattedDate(marathonData.registrationPeriod.startDate);
+        console.log(`Processing marathon: ${marathonId}`);
 
-        // 1. 대회 신청일 알림 (신청 시작일이 오늘 또는 내일인 경우)
+        const registrationStartDateStr = getFormattedDate(
+          marathonData.registrationPeriod.startDate
+        );
+
+        // 1. 대회 신청일 알림
         if (registrationStartDateStr === todayStr) {
-          const { name, tokens } = marathonData;
-          await sendPushNotification(name, "대회 신청일입니다!", tokens);
+          const tokens = await getSubscribers(marathonId);
+          if (tokens.length > 0) {
+            await sendPushNotification(
+              marathonData.name,
+              '대회 신청일입니다!',
+              tokens
+            );
+          }
         }
 
         const eventDateStr = getFormattedDate(marathonData.date);
 
-        // 2. 대회 전날 알림 (대회 시작일이 내일인 경우)
+        // 2. 대회 전날 알림
         if (eventDateStr === tomorrowStr) {
-          const { name, tokens } = marathonData;
-          await sendPushNotification("내일 대회가 있습니다! 준비하세요.", tokens, name);
+          const tokens = await getSubscribers(marathonId);
+          if (tokens.length > 0) {
+            await sendPushNotification(
+              marathonData.name,
+              '내일 대회가 있습니다! 준비하세요.',
+              tokens
+            );
+          }
         }
       }
 
       return { success: true };
     } catch (error) {
-      console.error("Error sending notifications:", error);
+      console.error('Error sending notifications:', error);
       return { success: false, error: error.message };
     }
   }
 );
+
+const getSubscribers = async (marathonId) => {
+  try {
+    const db = admin.firestore();
+    const usersRef = db.collection('users');
+    const snapshot = await usersRef.where('marathons', 'array-contains', marathonId).get();
+
+    // 유효한 토큰만 추출하여 반환
+    const tokens = snapshot.docs
+      .map(doc => doc.data().token)
+      .filter(Boolean);  // 유효한 토큰만 필터링
+
+    return tokens;
+  } catch (error) {
+    console.error('Error getting subscribers:', error);
+    throw new Error('Failed to retrieve subscribers');
+  }
+};
