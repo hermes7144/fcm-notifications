@@ -1,5 +1,10 @@
 {
   "projects": {
-    "default": "alrammate"
-  }
+    "prod": "runnoti-9fdfa",
+    "env": "dev-runnoti",
+    "default": "runnoti-9fdfa",
+    "dev": "dev-runnoti"
+  },
+  "targets": {},
+  "etags": {}
 }

@@ -6,20 +6,42 @@ const cors = require("cors");
 admin.initializeApp(); // Firebase Admin 초기화
 
 // CORS 미들웨어 적용
-const corsOptions = {
-  origin: true, // 모든 도메인 허용 (혹은 특정 도메인만 허용 가능)
+
+const allowlist = ['http://localhost:5173', 'https://dev-runal.netlify.app', 'https://runal.netlify.app'];
+
+// CORS 옵션 동적 설정
+const corsOptionsDelegate = function (req, callback) {
+  let corsOptions;
+  const origin = req.header('Origin');
+
+  // CORS 요청을 허용할 도메인
+  if (allowlist.indexOf(origin) !== -1) {
+    corsOptions = { 
+      origin: true, // 요청된 Origin을 CORS 응답에 반영
+      methods: ['POST', 'OPTIONS'], // 허용할 HTTP 메서드
+      allowedHeaders: ['Content-Type'], // 허용할 요청 헤더
+    };
+  } else {
+    corsOptions = { origin: false }; // CORS 비활성화
+  }
+  
+  // CORS 설정 적용
+  callback(null, corsOptions);
 };
 
+
 // FCM 메시지 보내는 함수
-const sendPushNotification = async (title, body, tokens) => {
+const sendPushNotification = async (title, body, icon, tokens) => {
+
   const message = {
     data: {
       title,
       body,
-      click_action: "https://runnings.netlify.app/"
+      icon,
     },
     tokens
   };
+   
   try {
     const response = await admin.messaging().sendEachForMulticast(message);
     console.log("Messages sent successfully!", response);
@@ -32,9 +54,9 @@ const sendPushNotification = async (title, body, tokens) => {
 
 // 요청에 대한 푸시 알림 함수
 exports.sendPushNotifications = onRequest(async (req, res) => {
-  cors(corsOptions)(req, res, async () => {
-    const { tokens, title, body } = req.body;
-    const response = await sendPushNotification(title, body, tokens);
+  cors(corsOptionsDelegate)(req, res, async () => {
+    const { tokens, title, body, icon } = req.body;
+    const response = await sendPushNotification(title, body, icon, tokens);
     return res.status(response.success ? 200 : 500).json(response);
   });
 });
